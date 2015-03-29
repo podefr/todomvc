@@ -1,25 +1,56 @@
 (function () {
     'use strict';
 
+    var Store = require('emily').Store;
     var OObject = require('olives').OObject;
     var EventPlugin = require('olives')['Event.plugin'];
     var BindPlugin = require('olives')['Bind.plugin'];
-    var Tools = require('../lib/Tools');
+    var tools = require('../lib/tools');
+    var router = require('../lib/router');
+
+    var filters = {
+        '#/': function () {
+            return true;
+        },
+        '#/completed': function (task) {
+            return task.completed === true;
+        },
+        '#/active': function (task) {
+            return task.completed === false;
+        }
+    };
 
     module.exports = function listInit(view, model, stats) {
         // The OObject (the controller) inits with a default model which is a simple store
         // But it can be init'ed with any other store, like the LocalStore
         var list = new OObject(model);
+        var tasksToDisplay = new Store([]);
         var ENTER_KEY = 13;
+        var currentRoute = router.getLastRoute();
+
+        router.set('#/', function () {
+            currentRoute = '#/';
+            setTasksToDisplay();
+        });
+
+        router.set('#/completed', function () {
+            currentRoute = '#/completed';
+            setTasksToDisplay();
+        });
+
+        router.set('#/active', function () {
+            currentRoute = '#/active';
+            setTasksToDisplay();
+        });
 
         // The plugins
         list.seam.addAll({
             'event': new EventPlugin(list),
-            'model': new BindPlugin(model, {
-                'toggleClass': Tools.toggleClass
+            'model': new BindPlugin(tasksToDisplay, {
+                'toggleClass': tools.toggleClass
             }),
             'stats': new BindPlugin(stats, {
-                'toggleClass': Tools.toggleClass,
+                'toggleClass': tools.toggleClass,
                 'toggleCheck': function (value) {
                     this.checked = model.count() === value ? 'on' : '';
                 }
@@ -44,7 +75,7 @@
         list.startEdit = function (event, node) {
             var taskId = node.getAttribute('data-model_id');
 
-            Tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), true, 'editing');
+            tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), true, 'editing');
             view.querySelector('input.edit[data-model_id="' + taskId + '"]').focus();
         };
 
@@ -64,12 +95,26 @@
 
                 // When task #n is removed, #n+1 becomes #n, the dom node is updated to the new value, so editing mode should exit anyway
                 if (model.has(taskId)) {
-                    Tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
+                    tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
                 }
             } else if (event.type === 'blur') {
-                Tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
+                tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
             }
         };
+
+        // And listen to changes
+        tasksToDisplay.watch('added', setTasksToDisplay);
+        tasksToDisplay.watch('updated', setTasksToDisplay);
+        tasksToDisplay.watch('deleted', setTasksToDisplay);
+
+        function setTasksToDisplay() {
+            var filteredItems = model
+                .dump()
+                .filter(filters[currentRoute]);
+            tasksToDisplay.reset(filteredItems);
+        }
+
+        setTasksToDisplay();
 
         // Alive applies the plugins to the HTML view
         list.alive(view);

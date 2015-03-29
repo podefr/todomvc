@@ -4,7 +4,8 @@
     var OObject = require('olives').OObject;
     var EventPlugin = require('olives')['Event.plugin'];
     var BindPlugin = require('olives')['Bind.plugin'];
-    var Tools = require('../lib/Tools');
+    var tools = require('../lib/tools');
+    var router = require('../lib/router');
 
     module.exports = function controlsInit(view, model, stats) {
         // The OObject (the controller) inits with a default model which is a simple store
@@ -36,8 +37,22 @@
         controls.seam.addAll({
             'event': new EventPlugin(controls),
             'stats': new BindPlugin(stats, {
-                'toggleClass': Tools.toggleClass
-            })
+                'toggleClass': tools.toggleClass
+            }),
+            'router': {
+                isActive: function (link, className) {
+                    if (router.getLastRoute() == link.hash) {
+                        link.classList.add(className);
+                    }
+                    router.watch(function (route) {
+                        if (link.hash === route) {
+                            link.classList.add(className);
+                        } else {
+                            link.classList.remove(className);
+                        }
+                    });
+                }
+            }
         });
 
         // Alive applies the plugins to the HTML view

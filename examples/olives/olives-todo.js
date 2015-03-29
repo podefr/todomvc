@@ -1,13 +1,15 @@
-(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);var f=new Error("Cannot find module '"+o+"'");throw f.code="MODULE_NOT_FOUND",f}var l=n[o]={exports:{}};t[o][0].call(l.exports,function(e){var n=t[o][1][e];return s(n?n:e)},l,l.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
+(function e(t,n,r){function s(o,u){if(!n[o]){if(!t[o]){var a=typeof require=="function"&&require;if(!u&&a)return a(o,!0);if(i)return i(o,!0);throw new Error("Cannot find module '"+o+"'")}var f=n[o]={exports:{}};t[o][0].call(f.exports,function(e){var n=t[o][1][e];return s(n?n:e)},f,f.exports,e,t,n,r)}return n[o].exports}var i=typeof require=="function"&&require;for(var o=0;o<r.length;o++)s(r[o]);return s})({1:[function(require,module,exports){
 (function () {
     'use strict';
 
-    var input = require('./uis/Input');
-    var list = require('./uis/List');
-    var controls = require('./uis/Controls');
+    var input = require('./uis/input');
+    var list = require('./uis/list');
+    var controls = require('./uis/controls');
 
     var LocalStore = require('olives').LocalStore;
     var Store = require('emily').Store;
+
+    var router = require("./lib/router");
 
 
     // The tasks Store is told to init on an array
@@ -24,6 +26,7 @@
         plural: 'items'
     });
 
+
     // Synchronize the store on 'todos-olives' localStorage
     tasks.sync('todos-olives');
 
@@ -35,9 +38,27 @@
 
     // Same goes for the control UI
     controls(document.querySelector('#footer'), tasks, stats);
+
+
 })();
 
-},{"./uis/Controls":3,"./uis/Input":4,"./uis/List":5,"emily":27,"olives":71}],2:[function(require,module,exports){
+},{"./lib/router":2,"./uis/controls":4,"./uis/input":5,"./uis/list":6,"emily":28,"olives":72}],2:[function(require,module,exports){
+(function () {
+    'use strict';
+
+    var UrlHighway = require("url-highway");
+
+    var urlHighway = new UrlHighway();
+
+    urlHighway.parse = function (hash) {
+        return [ hash ];
+    };
+
+    urlHighway.start();
+
+    module.exports = urlHighway;
+})();
+},{"url-highway":73}],3:[function(require,module,exports){
 (function () {
     'use strict';
 
@@ -57,14 +78,15 @@
         }
     };
 })();
-},{}],3:[function(require,module,exports){
+},{}],4:[function(require,module,exports){
 (function () {
     'use strict';
 
     var OObject = require('olives').OObject;
     var EventPlugin = require('olives')['Event.plugin'];
     var BindPlugin = require('olives')['Bind.plugin'];
-    var Tools = require('../lib/Tools');
+    var tools = require('../lib/tools');
+    var router = require('../lib/router');
 
     module.exports = function controlsInit(view, model, stats) {
         // The OObject (the controller) inits with a default model which is a simple store
@@ -96,8 +118,22 @@
         controls.seam.addAll({
             'event': new EventPlugin(controls),
             'stats': new BindPlugin(stats, {
-                'toggleClass': Tools.toggleClass
-            })
+                'toggleClass': tools.toggleClass
+            }),
+            'router': {
+                isActive: function (link, className) {
+                    if (router.getLastRoute() == link.hash) {
+                        link.classList.add(className);
+                    }
+                    router.watch(function (route) {
+                        if (link.hash === route) {
+                            link.classList.add(className);
+                        } else {
+                            link.classList.remove(className);
+                        }
+                    });
+                }
+            }
         });
 
         // Alive applies the plugins to the HTML view
@@ -118,7 +154,7 @@
     };
 })();
 
-},{"../lib/Tools":2,"olives":71}],4:[function(require,module,exports){
+},{"../lib/router":2,"../lib/tools":3,"olives":72}],5:[function(require,module,exports){
 (function () {
     'use strict';
 
@@ -151,29 +187,60 @@
         input.alive(view);
     };
 })();
-},{"olives":71}],5:[function(require,module,exports){
+},{"olives":72}],6:[function(require,module,exports){
 (function () {
     'use strict';
 
+    var Store = require('emily').Store;
     var OObject = require('olives').OObject;
     var EventPlugin = require('olives')['Event.plugin'];
     var BindPlugin = require('olives')['Bind.plugin'];
-    var Tools = require('../lib/Tools');
+    var tools = require('../lib/tools');
+    var router = require('../lib/router');
+
+    var filters = {
+        '#/': function () {
+            return true;
+        },
+        '#/completed': function (task) {
+            return task.completed === true;
+        },
+        '#/active': function (task) {
+            return task.completed === false;
+        }
+    };
 
     module.exports = function listInit(view, model, stats) {
         // The OObject (the controller) inits with a default model which is a simple store
         // But it can be init'ed with any other store, like the LocalStore
         var list = new OObject(model);
+        var tasksToDisplay = new Store([]);
         var ENTER_KEY = 13;
+        var currentRoute = router.getLastRoute();
+
+        router.set('#/', function () {
+            currentRoute = '#/';
+            setTasksToDisplay();
+        });
+
+        router.set('#/completed', function () {
+            currentRoute = '#/completed';
+            setTasksToDisplay();
+        });
+
+        router.set('#/active', function () {
+            currentRoute = '#/active';
+            setTasksToDisplay();
+        });
 
         // The plugins
         list.seam.addAll({
             'event': new EventPlugin(list),
-            'model': new BindPlugin(model, {
-                'toggleClass': Tools.toggleClass
+            'model': new BindPlugin(tasksToDisplay, {
+                'toggleClass': tools.toggleClass
             }),
             'stats': new BindPlugin(stats, {
-                'toggleClass': Tools.toggleClass,
+                'toggleClass': tools.toggleClass,
                 'toggleCheck': function (value) {
                     this.checked = model.count() === value ? 'on' : '';
                 }
@@ -198,7 +265,7 @@
         list.startEdit = function (event, node) {
             var taskId = node.getAttribute('data-model_id');
 
-            Tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), true, 'editing');
+            tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), true, 'editing');
             view.querySelector('input.edit[data-model_id="' + taskId + '"]').focus();
         };
 
@@ -218,18 +285,32 @@
 
                 // When task #n is removed, #n+1 becomes #n, the dom node is updated to the new value, so editing mode should exit anyway
                 if (model.has(taskId)) {
-                    Tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
+                    tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
                 }
             } else if (event.type === 'blur') {
-                Tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
+                tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
             }
         };
+
+        // And listen to changes
+        tasksToDisplay.watch('added', setTasksToDisplay);
+        tasksToDisplay.watch('updated', setTasksToDisplay);
+        tasksToDisplay.watch('deleted', setTasksToDisplay);
+
+        function setTasksToDisplay() {
+            var filteredItems = model
+                .dump()
+                .filter(filters[currentRoute]);
+            tasksToDisplay.reset(filteredItems);
+        }
+
+        setTasksToDisplay();
 
         // Alive applies the plugins to the HTML view
         list.alive(view);
     };
 })();
-},{"../lib/Tools":2,"olives":71}],6:[function(require,module,exports){
+},{"../lib/router":2,"../lib/tools":3,"emily":28,"olives":72}],7:[function(require,module,exports){
 /**
 * @license compare-numbers https://github.com/cosmosio/compare-numbers
  *
@@ -276,7 +357,7 @@ module.exports = {
     }
 };
 
-},{}],7:[function(require,module,exports){
+},{}],8:[function(require,module,exports){
 /**
 * @license get-closest https://github.com/cosmosio/get-closest
 *
@@ -377,7 +458,7 @@ module.exports = {
 
 };
 
-},{"assert":72}],8:[function(require,module,exports){
+},{"assert":78}],9:[function(require,module,exports){
 /**
  * @license get-global https://github.com/cosmosio/get-global
  *
@@ -397,7 +478,7 @@ module.exports = function getGlobal() {
     return Function('return this')();
 };
 
-},{}],9:[function(require,module,exports){
+},{}],10:[function(require,module,exports){
 /**
 * @license highway https://github.com/cosmosio/highway
 *
@@ -635,7 +716,7 @@ module.exports = function RouterConstructor() {
 
 };
 
-},{"to-array":23,"watch-notify":25}],10:[function(require,module,exports){
+},{"to-array":24,"watch-notify":26}],11:[function(require,module,exports){
 /**
 * @license nested-property https://github.com/cosmosio/nested-property
 *
@@ -784,7 +865,7 @@ function isInNestedProperty(object, property, objectInPath, options) {
     }
 }
 
-},{"assert":72}],11:[function(require,module,exports){
+},{"assert":78}],12:[function(require,module,exports){
 /**
 * @license object-count https://github.com/cosmosio/object-count
 *
@@ -813,7 +894,7 @@ module.exports = function count(object) {
   }
 };
 
-},{"assert":72}],12:[function(require,module,exports){
+},{"assert":78}],13:[function(require,module,exports){
 /**
 * @license observable-store https://github.com/flams/observable-store
 *
@@ -1195,7 +1276,7 @@ module.exports = function StoreConstructor($data) {
     };
 };
 
-},{"compare-numbers":6,"nested-property":13,"object-count":11,"shallow-copy":15,"shallow-diff":16,"simple-loop":14,"watch-notify":25}],13:[function(require,module,exports){
+},{"compare-numbers":7,"nested-property":14,"object-count":12,"shallow-copy":16,"shallow-diff":17,"simple-loop":15,"watch-notify":26}],14:[function(require,module,exports){
 /**
 * @license nested-property https://github.com/cosmosio/nested-property
 *
@@ -1266,7 +1347,7 @@ function setNestedProperty(object, property, value) {
     }
 }
 
-},{"assert":72}],14:[function(require,module,exports){
+},{"assert":78}],15:[function(require,module,exports){
 /**
 * @license simple-loop https://github.com/flams/simple-loop
 *
@@ -1301,7 +1382,7 @@ module.exports = function loop(iterated, callback, scope) {
   }
 };
 
-},{"assert":72}],15:[function(require,module,exports){
+},{"assert":78}],16:[function(require,module,exports){
 module.exports = function (obj) {
     if (!obj || typeof obj !== 'object') return obj;
     
@@ -1338,7 +1419,7 @@ var isArray = Array.isArray || function (xs) {
     return {}.toString.call(xs) === '[object Array]';
 };
 
-},{}],16:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 /**
 * @license shallow-diff https://github.com/cosmosio/shallow-diff
 *
@@ -1426,9 +1507,9 @@ module.exports = function shallowDiff(base, compared) {
   };
 };
 
-},{"assert":72,"simple-loop":17}],17:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"assert":72,"dup":14}],18:[function(require,module,exports){
+},{"assert":78,"simple-loop":18}],18:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],19:[function(require,module,exports){
 /**
 * @license simple-loop https://github.com/flams/simple-loop
 *
@@ -1465,7 +1546,7 @@ module.exports = function loop(iterated, callback, scope) {
   }
 };
 
-},{"assert":72}],19:[function(require,module,exports){
+},{"assert":78}],20:[function(require,module,exports){
 /**
 * @license simple-mixin https://github.com/flams/simple-object-mixin
 *
@@ -1493,9 +1574,9 @@ module.exports = function mixin(source, destination, dontOverride) {
     return destination;
 };
 
-},{"simple-loop":20}],20:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"assert":72,"dup":14}],21:[function(require,module,exports){
+},{"simple-loop":21}],21:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],22:[function(require,module,exports){
 /**
 * @license synchronous-fsm https://github.com/flams/synchronous-fsm
 *
@@ -1749,9 +1830,9 @@ function Transition() {
     };
 }
 
-},{"simple-loop":22,"to-array":23}],22:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"assert":72,"dup":14}],23:[function(require,module,exports){
+},{"simple-loop":23,"to-array":24}],23:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],24:[function(require,module,exports){
 module.exports = toArray
 
 function toArray(list, index) {
@@ -1766,7 +1847,7 @@ function toArray(list, index) {
     return array
 }
 
-},{}],24:[function(require,module,exports){
+},{}],25:[function(require,module,exports){
 /**
 * @license transport https://github.com/cosmosio/transport
 *
@@ -1873,7 +1954,7 @@ module.exports = function TransportConstructor($reqHandlers) {
 
 };
 
-},{}],25:[function(require,module,exports){
+},{}],26:[function(require,module,exports){
 /**
 * @license watch-notify https://github.com/flams/watch-notify
 *
@@ -2019,9 +2100,9 @@ module.exports = function WatchNotifyConstructor() {
     };
 };
 
-},{"assert":72,"simple-loop":26,"to-array":23}],26:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"assert":72,"dup":14}],27:[function(require,module,exports){
+},{"assert":78,"simple-loop":27,"to-array":24}],27:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],28:[function(require,module,exports){
 /**
  * Emily.js - http://flams.github.com/emily/
  * Copyright(c) 2012-2014 Olivier Scherrer <pode.fr@gmail.com>
@@ -2055,7 +2136,7 @@ module.exports = {
     Transport: require("transport")
 };
 
-},{"./Promise":28,"compare-numbers":6,"get-closest":7,"get-global":8,"highway":9,"nested-property":10,"object-count":11,"observable-store":12,"shallow-copy":15,"shallow-diff":16,"simple-loop":18,"simple-object-mixin":19,"synchronous-fsm":21,"to-array":23,"transport":24,"watch-notify":25}],28:[function(require,module,exports){
+},{"./Promise":29,"compare-numbers":7,"get-closest":8,"get-global":9,"highway":10,"nested-property":11,"object-count":12,"observable-store":13,"shallow-copy":16,"shallow-diff":17,"simple-loop":19,"simple-object-mixin":20,"synchronous-fsm":22,"to-array":24,"transport":25,"watch-notify":26}],29:[function(require,module,exports){
 /**
 * Emily.js - http://flams.github.com/emily/
 * Copyright(c) 2012-2014 Olivier Scherrer <pode.fr@gmail.com>
@@ -2310,7 +2391,7 @@ module.exports = function PromiseConstructor() {
     };
 };
 
-},{"synchronous-fsm":21,"watch-notify":25}],29:[function(require,module,exports){
+},{"synchronous-fsm":22,"watch-notify":26}],30:[function(require,module,exports){
 /**
 * @license data-binding-plugin https://github.com/flams/data-binding-plugin
 *
@@ -2977,11 +3058,11 @@ module.exports = function BindPluginConstructor($model, $bindings) {
     }
 };
 
-},{"compare-numbers":30,"get-closest":31,"get-dataset":32,"get-nodes":33,"nested-property":34,"simple-loop":35,"to-array":36,"watch-notify":37}],30:[function(require,module,exports){
-arguments[4][6][0].apply(exports,arguments)
-},{"dup":6}],31:[function(require,module,exports){
-arguments[4][7][0].apply(exports,arguments)
-},{"assert":72,"dup":7}],32:[function(require,module,exports){
+},{"compare-numbers":31,"get-closest":32,"get-dataset":33,"get-nodes":34,"nested-property":35,"simple-loop":36,"to-array":37,"watch-notify":38}],31:[function(require,module,exports){
+module.exports=require(7)
+},{}],32:[function(require,module,exports){
+module.exports=require(8)
+},{"assert":78}],33:[function(require,module,exports){
 /**
 * @license get-dataset https://github.com/cosmios/get-dataset
 *
@@ -3014,7 +3095,7 @@ arguments[4][7][0].apply(exports,arguments)
     }
 };
 
-},{}],33:[function(require,module,exports){
+},{}],34:[function(require,module,exports){
 /**
 * @license get-nodes https://github.com/cosmios/get-nodes
 *
@@ -3035,7 +3116,7 @@ module.exports = function getNodes(dom) {
     return arrayDomElements;
 };
 
-},{"to-array":36}],34:[function(require,module,exports){
+},{"to-array":37}],35:[function(require,module,exports){
 /**
 * @license nested-property https://github.com/cosmosio/nested-property
 *
@@ -3106,13 +3187,13 @@ function setNestedProperty(object, property, value) {
     }
 }
 
-},{"assert":72}],35:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"assert":72,"dup":14}],36:[function(require,module,exports){
-arguments[4][23][0].apply(exports,arguments)
-},{"dup":23}],37:[function(require,module,exports){
-arguments[4][25][0].apply(exports,arguments)
-},{"assert":72,"dup":25,"simple-loop":35,"to-array":36}],38:[function(require,module,exports){
+},{"assert":78}],36:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],37:[function(require,module,exports){
+module.exports=require(24)
+},{}],38:[function(require,module,exports){
+module.exports=require(26)
+},{"assert":78,"simple-loop":36,"to-array":37}],39:[function(require,module,exports){
 /**
 * @license dom-stack https://github.com/cosmosio/dom-stack
 *
@@ -3418,9 +3499,9 @@ module.exports = function StackConstructor($parent) {
 
 };
 
-},{"to-array":39}],39:[function(require,module,exports){
-arguments[4][23][0].apply(exports,arguments)
-},{"dup":23}],40:[function(require,module,exports){
+},{"to-array":40}],40:[function(require,module,exports){
+module.exports=require(24)
+},{}],41:[function(require,module,exports){
 /**
 * @license event-plugin https://github.com/flams/event-plugin
 *
@@ -3557,7 +3638,7 @@ module.exports = function EventPluginConstructor($parent, $isMobile) {
     this.setParent($parent);
 };
 
-},{"matches-selector":41}],41:[function(require,module,exports){
+},{"matches-selector":42}],42:[function(require,module,exports){
 'use strict';
 
 var proto = Element.prototype;
@@ -3587,7 +3668,7 @@ function match(el, selector) {
   }
   return false;
 }
-},{}],42:[function(require,module,exports){
+},{}],43:[function(require,module,exports){
 /**
 * @license local-observable-store https://github.com/cosmosio/local-observable-store
 *
@@ -3689,25 +3770,25 @@ module.exports = function LocalStoreFactory(init) {
     return new LocalStoreConstructor();
 };
 
-},{"observable-store":43,"simple-loop":51}],43:[function(require,module,exports){
-arguments[4][12][0].apply(exports,arguments)
-},{"compare-numbers":44,"dup":12,"nested-property":45,"object-count":46,"shallow-copy":47,"shallow-diff":48,"simple-loop":51,"watch-notify":49}],44:[function(require,module,exports){
-arguments[4][6][0].apply(exports,arguments)
-},{"dup":6}],45:[function(require,module,exports){
+},{"observable-store":44,"simple-loop":52}],44:[function(require,module,exports){
 arguments[4][13][0].apply(exports,arguments)
-},{"assert":72,"dup":13}],46:[function(require,module,exports){
-arguments[4][11][0].apply(exports,arguments)
-},{"assert":72,"dup":11}],47:[function(require,module,exports){
-arguments[4][15][0].apply(exports,arguments)
-},{"dup":15}],48:[function(require,module,exports){
-arguments[4][16][0].apply(exports,arguments)
-},{"assert":72,"dup":16,"simple-loop":51}],49:[function(require,module,exports){
-arguments[4][25][0].apply(exports,arguments)
-},{"assert":72,"dup":25,"simple-loop":51,"to-array":50}],50:[function(require,module,exports){
-arguments[4][23][0].apply(exports,arguments)
-},{"dup":23}],51:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"assert":72,"dup":14}],52:[function(require,module,exports){
+},{"compare-numbers":45,"nested-property":46,"object-count":47,"shallow-copy":48,"shallow-diff":49,"simple-loop":52,"watch-notify":50}],45:[function(require,module,exports){
+module.exports=require(7)
+},{}],46:[function(require,module,exports){
+module.exports=require(14)
+},{"assert":78}],47:[function(require,module,exports){
+module.exports=require(12)
+},{"assert":78}],48:[function(require,module,exports){
+module.exports=require(16)
+},{}],49:[function(require,module,exports){
+module.exports=require(17)
+},{"assert":78,"simple-loop":52}],50:[function(require,module,exports){
+module.exports=require(26)
+},{"assert":78,"simple-loop":52,"to-array":51}],51:[function(require,module,exports){
+module.exports=require(24)
+},{}],52:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],53:[function(require,module,exports){
 /**
 * @license place-plugin https://github.com/flams/place-plugin
 *
@@ -3803,9 +3884,9 @@ module.exports = function PlacePluginConstructor($uis) {
 
 };
 
-},{"simple-loop":53}],53:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"assert":72,"dup":14}],54:[function(require,module,exports){
+},{"simple-loop":54}],54:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],55:[function(require,module,exports){
 /**
 * @license seam-view https://github.com/flams/seam-view
 *
@@ -4001,13 +4082,13 @@ module.exports = function SeamViewConstructor() {
 
 };
 
-},{"seam":58,"synchronous-fsm":55,"to-array":57}],55:[function(require,module,exports){
-arguments[4][21][0].apply(exports,arguments)
-},{"dup":21,"simple-loop":56,"to-array":57}],56:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"assert":72,"dup":14}],57:[function(require,module,exports){
-arguments[4][23][0].apply(exports,arguments)
-},{"dup":23}],58:[function(require,module,exports){
+},{"seam":59,"synchronous-fsm":56,"to-array":58}],56:[function(require,module,exports){
+module.exports=require(22)
+},{"simple-loop":57,"to-array":58}],57:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],58:[function(require,module,exports){
+module.exports=require(24)
+},{}],59:[function(require,module,exports){
 /**
 * @license seam https://github.com/flams/seam
 *
@@ -4157,15 +4238,15 @@ module.exports = function Seam($plugins) {
 
 };
 
-},{"get-dataset":59,"get-nodes":60,"simple-loop":61,"to-array":62}],59:[function(require,module,exports){
-arguments[4][32][0].apply(exports,arguments)
-},{"dup":32}],60:[function(require,module,exports){
-arguments[4][33][0].apply(exports,arguments)
-},{"dup":33,"to-array":62}],61:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"assert":72,"dup":14}],62:[function(require,module,exports){
-arguments[4][23][0].apply(exports,arguments)
-},{"dup":23}],63:[function(require,module,exports){
+},{"get-dataset":60,"get-nodes":61,"simple-loop":62,"to-array":63}],60:[function(require,module,exports){
+module.exports=require(33)
+},{}],61:[function(require,module,exports){
+module.exports=require(34)
+},{"to-array":63}],62:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],63:[function(require,module,exports){
+module.exports=require(24)
+},{}],64:[function(require,module,exports){
 /**
 * @license socketio-transport https://github.com/cosmosio/socketio-transport
 *
@@ -4325,7 +4406,7 @@ module.exports = function SocketIOTransportConstructor($socket) {
 	this.setSocket($socket);
 };
 
-},{}],64:[function(require,module,exports){
+},{}],65:[function(require,module,exports){
 /**
 * @license socketio-transport https://github.com/cosmosio/socketio-transport
 *
@@ -4340,7 +4421,7 @@ module.exports = {
     Server: require("./server/index")
 };
 
-},{"./client/index":63,"./server/index":65}],65:[function(require,module,exports){
+},{"./client/index":64,"./server/index":66}],66:[function(require,module,exports){
 /**
 * @license socketio-transport https://github.com/cosmosio/socketio-transport
 *
@@ -4398,7 +4479,7 @@ module.exports = function registerSocketIO(io, handlers) {
     }
 };
 
-},{}],66:[function(require,module,exports){
+},{}],67:[function(require,module,exports){
 /**
 * @license url-highway https://github.com/cosmosio/url-highway
 *
@@ -4585,15 +4666,15 @@ module.exports = function UrlHighwayFactory() {
     return new UrlHighway();
 };
 
-},{"highway":67,"to-array":70}],67:[function(require,module,exports){
-arguments[4][9][0].apply(exports,arguments)
-},{"dup":9,"to-array":70,"watch-notify":68}],68:[function(require,module,exports){
-arguments[4][25][0].apply(exports,arguments)
-},{"assert":72,"dup":25,"simple-loop":69,"to-array":70}],69:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"assert":72,"dup":14}],70:[function(require,module,exports){
-arguments[4][23][0].apply(exports,arguments)
-},{"dup":23}],71:[function(require,module,exports){
+},{"highway":68,"to-array":71}],68:[function(require,module,exports){
+arguments[4][10][0].apply(exports,arguments)
+},{"to-array":71,"watch-notify":69}],69:[function(require,module,exports){
+module.exports=require(26)
+},{"assert":78,"simple-loop":70,"to-array":71}],70:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],71:[function(require,module,exports){
+module.exports=require(24)
+},{}],72:[function(require,module,exports){
 /**
  * Olives http://flams.github.com/olives
  * The MIT License (MIT)
@@ -4613,7 +4694,17 @@ module.exports = {
     "Stack": require("dom-stack")
 };
 
-},{"data-binding-plugin":29,"dom-stack":38,"event-plugin":40,"local-observable-store":42,"place-plugin":52,"seam":58,"seam-view":54,"socketio-transport":64,"url-highway":66}],72:[function(require,module,exports){
+},{"data-binding-plugin":30,"dom-stack":39,"event-plugin":41,"local-observable-store":43,"place-plugin":53,"seam":59,"seam-view":55,"socketio-transport":65,"url-highway":67}],73:[function(require,module,exports){
+arguments[4][67][0].apply(exports,arguments)
+},{"highway":74,"to-array":77}],74:[function(require,module,exports){
+arguments[4][10][0].apply(exports,arguments)
+},{"to-array":77,"watch-notify":75}],75:[function(require,module,exports){
+module.exports=require(26)
+},{"assert":78,"simple-loop":76,"to-array":77}],76:[function(require,module,exports){
+module.exports=require(15)
+},{"assert":78}],77:[function(require,module,exports){
+module.exports=require(24)
+},{}],78:[function(require,module,exports){
 // http://wiki.commonjs.org/wiki/Unit_Testing/1.0
 //
 // THIS IS NOT TESTED NOR LIKELY TO WORK OUTSIDE V8!
@@ -4702,7 +4793,7 @@ function replacer(key, value) {
   if (util.isUndefined(value)) {
     return '' + value;
   }
-  if (util.isNumber(value) && !isFinite(value)) {
+  if (util.isNumber(value) && (isNaN(value) || !isFinite(value))) {
     return value.toString();
   }
   if (util.isFunction(value) || util.isRegExp(value)) {
@@ -4841,22 +4932,23 @@ function objEquiv(a, b) {
     return false;
   // an identical 'prototype' property.
   if (a.prototype !== b.prototype) return false;
-  // if one is a primitive, the other must be same
-  if (util.isPrimitive(a) || util.isPrimitive(b)) {
-    return a === b;
-  }
-  var aIsArgs = isArguments(a),
-      bIsArgs = isArguments(b);
-  if ((aIsArgs && !bIsArgs) || (!aIsArgs && bIsArgs))
-    return false;
-  if (aIsArgs) {
+  //~~~I've managed to break Object.keys through screwy arguments passing.
+  //   Converting to array solves the problem.
+  if (isArguments(a)) {
+    if (!isArguments(b)) {
+      return false;
+    }
     a = pSlice.call(a);
     b = pSlice.call(b);
     return _deepEqual(a, b);
   }
-  var ka = objectKeys(a),
-      kb = objectKeys(b),
-      key, i;
+  try {
+    var ka = objectKeys(a),
+        kb = objectKeys(b),
+        key, i;
+  } catch (e) {//happens when one is a string literal and the other isn't
+    return false;
+  }
   // having the same number of owned properties (keys incorporates
   // hasOwnProperty)
   if (ka.length != kb.length)
@@ -4974,7 +5066,7 @@ var objectKeys = Object.keys || function (obj) {
   return keys;
 };
 
-},{"util/":76}],73:[function(require,module,exports){
+},{"util/":82}],79:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -4999,75 +5091,70 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],74:[function(require,module,exports){
+},{}],80:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
-var queue = [];
-var draining = false;
 
-function drainQueue() {
-    if (draining) {
-        return;
+process.nextTick = (function () {
+    var canSetImmediate = typeof window !== 'undefined'
+    && window.setImmediate;
+    var canPost = typeof window !== 'undefined'
+    && window.postMessage && window.addEventListener
+    ;
+
+    if (canSetImmediate) {
+        return function (f) { return window.setImmediate(f) };
     }
-    draining = true;
-    var currentQueue;
-    var len = queue.length;
-    while(len) {
-        currentQueue = queue;
-        queue = [];
-        var i = -1;
-        while (++i < len) {
-            currentQueue[i]();
-        }
-        len = queue.length;
+
+    if (canPost) {
+        var queue = [];
+        window.addEventListener('message', function (ev) {
+            var source = ev.source;
+            if ((source === window || source === null) && ev.data === 'process-tick') {
+                ev.stopPropagation();
+                if (queue.length > 0) {
+                    var fn = queue.shift();
+                    fn();
+                }
+            }
+        }, true);
+
+        return function nextTick(fn) {
+            queue.push(fn);
+            window.postMessage('process-tick', '*');
+        };
     }
-    draining = false;
-}
-process.nextTick = function (fun) {
-    queue.push(fun);
-    if (!draining) {
-        setTimeout(drainQueue, 0);
-    }
-};
+
+    return function nextTick(fn) {
+        setTimeout(fn, 0);
+    };
+})();
 
 process.title = 'browser';
 process.browser = true;
 process.env = {};
 process.argv = [];
-process.version = ''; // empty string to avoid regexp issues
-
-function noop() {}
-
-process.on = noop;
-process.addListener = noop;
-process.once = noop;
-process.off = noop;
-process.removeListener = noop;
-process.removeAllListeners = noop;
-process.emit = noop;
 
 process.binding = function (name) {
     throw new Error('process.binding is not supported');
-};
+}
 
 // TODO(shtylman)
 process.cwd = function () { return '/' };
 process.chdir = function (dir) {
     throw new Error('process.chdir is not supported');
 };
-process.umask = function() { return 0; };
 
-},{}],75:[function(require,module,exports){
+},{}],81:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],76:[function(require,module,exports){
-(function (process,global){
-// Copyright Joyent, Inc. and other Node contributors.
+},{}],82:[function(require,module,exports){
+var process=require("__browserify_process"),global=typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {};// Copyright Joyent, Inc. and other Node contributors.
 //
 // Permission is hereby granted, free of charge, to any person obtaining a
 // copy of this software and associated documentation files (the
@@ -5654,5 +5741,4 @@ function hasOwnProperty(obj, prop) {
   return Object.prototype.hasOwnProperty.call(obj, prop);
 }
 
-}).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":75,"_process":74,"inherits":73}]},{},[1]);
+},{"./support/isBuffer":81,"__browserify_process":80,"inherits":79}]},{},[1])

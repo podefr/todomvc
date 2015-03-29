@@ -1,12 +1,14 @@
 (function () {
     'use strict';
 
-    var input = require('./uis/Input');
-    var list = require('./uis/List');
-    var controls = require('./uis/Controls');
+    var input = require('./uis/input');
+    var list = require('./uis/list');
+    var controls = require('./uis/controls');
 
     var LocalStore = require('olives').LocalStore;
     var Store = require('emily').Store;
+
+    var router = require("./lib/router");
 
 
     // The tasks Store is told to init on an array
@@ -23,6 +25,7 @@
         plural: 'items'
     });
 
+
     // Synchronize the store on 'todos-olives' localStorage
     tasks.sync('todos-olives');
 
@@ -34,4 +37,6 @@
 
     // Same goes for the control UI
     controls(document.querySelector('#footer'), tasks, stats);
+
+
 })();
