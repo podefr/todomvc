@@ -6,6 +6,7 @@
     var BindPlugin = require('olives')['Bind.plugin'];
     var tools = require('../lib/tools');
     var router = require('../lib/router');
+    var RouterPlugin = require('../lib/routerPlugin');
 
     module.exports = function controlsInit(view, model, stats) {
         // The OObject (the controller) inits with a default model which is a simple store
@@ -39,20 +40,7 @@
             'stats': new BindPlugin(stats, {
                 'toggleClass': tools.toggleClass
             }),
-            'router': {
-                isActive: function (link, className) {
-                    if (router.getLastRoute() == link.hash) {
-                        link.classList.add(className);
-                    }
-                    router.watch(function (route) {
-                        if (link.hash === route) {
-                            link.classList.add(className);
-                        } else {
-                            link.classList.remove(className);
-                        }
-                    });
-                }
-            }
+            'router': new RouterPlugin(router)
         });
 
         // Alive applies the plugins to the HTML view

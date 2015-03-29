@@ -19,7 +19,7 @@
 				<ul id="todo-list" data-model="foreach">
 					<li data-model="bind:toggleClass,completed,completed;">
 						<div class="view">
-							<input class="toggle" type="checkbox" data-model="bind:checked,completed">
+							<input class="toggle" type="checkbox" data-event="listen:click,toggleCompleted" data-model="bind:checked,completed">
 							<label data-model="bind:textContent,title" data-event="listen:dblclick,startEdit"></label>
 							<button class="destroy" data-event="listen:click,remove"></button>
 						</div>

@@ -8,9 +8,6 @@
     var LocalStore = require('olives').LocalStore;
     var Store = require('emily').Store;
 
-    var router = require("./lib/router");
-
-
     // The tasks Store is told to init on an array
     // so tasks are indexed by a number
     // This store is shared among several UIs of this application
