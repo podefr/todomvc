@@ -8,13 +8,8 @@ var controls = require('./uis/controls');
 var LocalStore = require('olives').LocalStore;
 var Store = require('emily').Store;
 
-// The tasks Store is told to init on an array
-// so tasks are indexed by a number
-// This store is shared among several UIs of this application
-// that's why it's created here
 var tasks = new LocalStore([]);
 
-// Also create a shared stats store
 var stats = new Store({
     nbItems: 0,
     nbLeft: 0,
@@ -22,29 +17,19 @@ var stats = new Store({
     plural: 'items'
 });
 
-// Synchronize the store on 'todos-olives' localStorage
 tasks.sync('todos-olives');
 
-// Initialize Input UI by giving it a view and a model.
 input(document.querySelector('#header input'), tasks);
 
-// Init the List UI the same way, pass it the stats store too
 list(document.querySelector('#main'), tasks, stats);
 
-// Same goes for the control UI
 controls(document.querySelector('#footer'), tasks, stats);
 
-},{"./uis/controls":3,"./uis/input":4,"./uis/list":5,"emily":32,"olives":76}],2:[function(require,module,exports){
+},{"./uis/controls":6,"./uis/input":7,"./uis/list":8,"emily":35,"olives":78}],2:[function(require,module,exports){
 'use strict';
 
-/*
- * A set of commonly used functions.
- * They're useful for several UIs in the app.
- * They could also be reused in other projects
- */
 module.exports = {
-    // className is set to the 'this' dom node according to the value's truthiness
-    'toggleClass': function (value, className) {
+    toggleClass: function toggleClass(value, className) {
         if (value) {
             this.classList.add(className);
         } else {
@@ -56,18 +41,77 @@ module.exports = {
 },{}],3:[function(require,module,exports){
 'use strict';
 
+var UrlHighway = require('url-highway');
+
+var urlHighway = new UrlHighway();
+
+urlHighway.parse = function (hash) {
+    return [ hash ];
+};
+
+module.exports = urlHighway;
+
+},{"url-highway":79}],4:[function(require,module,exports){
+'use strict';
+
+var tools = require('./tools');
+
+var routes = {
+    '#/': 'show-all',
+    '#/completed': 'show-completed',
+    '#/active': 'show-active'
+};
+
+/**
+ * A quick plugin to interface with a url-highway router.
+ * @param {url highway} the router's instance
+ * @constructor
+ */
+module.exports = function RouterPlugin(router) {
+    var currentRoute = router.getLastRoute();
+
+    /**
+     * Set a given className to a dom element if its hash matches with the url's hash
+     * @param link
+     * @param className
+     */
+    this.isLinkActive = function isLinkActive(link, className) {
+        if (router.getLastRoute() === link.hash) {
+            link.classList.add(className);
+        }
+
+        router.watch(function (route) {
+            tools.toggleClass.call(link, link.hash === route, className);
+        });
+    };
+
+    this.toggleClassOnRouteChange = function toggleClassOnRouteChange(list) {
+        router.watch(function (route) {
+            list.classList.remove(routes[currentRoute]);
+            list.classList.add(routes[route]);
+            currentRoute = route;
+        });
+    };
+
+	router.start();
+};
+
+},{"./tools":5}],5:[function(require,module,exports){
+arguments[4][2][0].apply(exports,arguments)
+},{"dup":2}],6:[function(require,module,exports){
+'use strict';
+
 var OObject = require('olives').OObject;
 var EventPlugin = require('olives')['Event.plugin'];
 var BindPlugin = require('olives')['Bind.plugin'];
 var Tools = require('../lib/Tools');
+var router = require('../lib/router');
+var RouterPlugin = require('../lib/routerPlugin');
 
 module.exports = function controlsInit(view, model, stats) {
-    // The OObject (the controller) inits with a default model which is a simple store
-    // But it can be init'ed with any other store, like the LocalStore
     var controls = new OObject(model);
 
-    // A function to get the completed tasks
-    var getCompleted = function () {
+    function getCompleted() {
         var completed = [];
         model.loop(function (value, id) {
             if (value.completed) {
@@ -75,61 +119,50 @@ module.exports = function controlsInit(view, model, stats) {
             }
         });
         return completed;
-    };
+    }
 
-    // Update all stats
-    var updateStats = function () {
+    function updateStats() {
         var nbCompleted = getCompleted().length;
 
         stats.set('nbItems', model.count());
         stats.set('nbLeft', stats.get('nbItems') - nbCompleted);
         stats.set('nbCompleted', nbCompleted);
         stats.set('plural', stats.get('nbLeft') === 1 ? 'item' : 'items');
-    };
+    }
 
-    // Add plugins to the UI.
     controls.seam.addAll({
-        'event': new EventPlugin(controls),
-        'stats': new BindPlugin(stats, {
+        event: new EventPlugin(controls),
+        router: new RouterPlugin(router),
+        stats: new BindPlugin(stats, {
             'toggleClass': Tools.toggleClass
         })
     });
 
-    // Alive applies the plugins to the HTML view
     controls.alive(view);
 
-    // Delete all tasks
-    controls.delAll = function () {
+    controls.delAll = function dellAll() {
         model.delAll(getCompleted());
     };
 
-    // Update stats when the tasks list is modified
     model.watch('added', updateStats);
     model.watch('deleted', updateStats);
     model.watch('updated', updateStats);
 
-    // I could either update stats at init or save them in a localStore
     updateStats();
 };
 
-},{"../lib/Tools":2,"olives":76}],4:[function(require,module,exports){
+},{"../lib/Tools":2,"../lib/router":3,"../lib/routerPlugin":4,"olives":78}],7:[function(require,module,exports){
 'use strict';
 
 var OObject = require('olives').OObject;
 var EventPlugin = require('olives')['Event.plugin'];
 
-// It returns an init function
 module.exports = function inputInit(view, model) {
-    // The OObject (the controller) inits with a default model which is a simple store
-    // But it can be init'ed with any other store, like the LocalStore
     var input = new OObject(model);
     var ENTER_KEY = 13;
 
-    // The event plugin that is added to the OObject
-    // We have to tell it where to find the methods
     input.seam.add('event', new EventPlugin(input));
 
-    // The method to add a new taks
     input.addTask = function addTask(event, node) {
         if (event.keyCode === ENTER_KEY && node.value.trim()) {
             model.alter('push', {
@@ -140,44 +173,43 @@ module.exports = function inputInit(view, model) {
         }
     };
 
-    // Alive applies the plugins to the HTML view
     input.alive(view);
 };
 
-},{"olives":76}],5:[function(require,module,exports){
+},{"olives":78}],8:[function(require,module,exports){
 'use strict';
 
 var OObject = require('olives').OObject;
 var EventPlugin = require('olives')['Event.plugin'];
 var BindPlugin = require('olives')['Bind.plugin'];
-var Tools = require('../lib/Tools');
+var tools = require('../lib/tools');
+var router = require('../lib/router');
+var RouterPlugin = require('../lib/routerPlugin');
+
 
 module.exports = function listInit(view, model, stats) {
-    // The OObject (the controller) inits with a default model which is a simple store
-    // But it can be init'ed with any other store, like the LocalStore
     var list = new OObject(model);
+
     var ENTER_KEY = 13;
 
-    // The plugins
     list.seam.addAll({
-        'event': new EventPlugin(list),
-        'model': new BindPlugin(model, {
-            'toggleClass': Tools.toggleClass
+        event: new EventPlugin(list),
+        model: new BindPlugin(model, {
+            'toggleClass': tools.toggleClass
         }),
-        'stats': new BindPlugin(stats, {
-            'toggleClass': Tools.toggleClass,
+        router: new RouterPlugin(router),
+        stats: new BindPlugin(stats, {
+            'toggleClass': tools.toggleClass,
             'toggleCheck': function (value) {
                 this.checked = model.count() === value ? 'on' : '';
             }
         })
     });
 
-    // Remove the completed task
     list.remove = function remove(event, node) {
         model.del(node.getAttribute('data-model_id'));
     };
 
-    // Un/check all tasks
     list.toggleAll = function toggleAll(event, node) {
         var checked = !!node.checked;
 
@@ -186,17 +218,15 @@ module.exports = function listInit(view, model, stats) {
         }, model);
     };
 
-    // Enter edit mode
-    list.startEdit = function (event, node) {
+    list.startEdit = function startEdit(event, node) {
         var taskId = node.getAttribute('data-model_id');
 
-        Tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), true, 'editing');
+        tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), true, 'editing');
         view.querySelector('input.edit[data-model_id="' + taskId + '"]').focus();
     };
 
-    // Leave edit mode
-    list.stopEdit = function (event, node) {
-        var taskId = node.getAttribute('data-model_id');
+    list.stopEdit = function stopEdit(event, node) {
+        var taskId = +node.getAttribute('data-model_id');
         var value;
 
         if (event.keyCode === ENTER_KEY) {
@@ -208,20 +238,18 @@ module.exports = function listInit(view, model, stats) {
                 model.del(taskId);
             }
 
-            // When task #n is removed, #n+1 becomes #n, the dom node is updated to the new value, so editing mode should exit anyway
             if (model.has(taskId)) {
-                Tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
+                tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
             }
         } else if (event.type === 'blur') {
-            Tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
+            tools.toggleClass.call(view.querySelector('li[data-model_id="' + taskId + '"]'), false, 'editing');
         }
     };
 
-    // Alive applies the plugins to the HTML view
     list.alive(view);
 };
 
-},{"../lib/Tools":2,"olives":76}],6:[function(require,module,exports){
+},{"../lib/router":3,"../lib/routerPlugin":4,"../lib/tools":5,"olives":78}],9:[function(require,module,exports){
 // http://wiki.commonjs.org/wiki/Unit_Testing/1.0
 //
 // THIS IS NOT TESTED NOR LIKELY TO WORK OUTSIDE V8!
@@ -582,7 +610,7 @@ var objectKeys = Object.keys || function (obj) {
   return keys;
 };
 
-},{"util/":10}],7:[function(require,module,exports){
+},{"util/":13}],10:[function(require,module,exports){
 if (typeof Object.create === 'function') {
   // implementation from standard node.js 'util' module
   module.exports = function inherits(ctor, superCtor) {
@@ -607,7 +635,7 @@ if (typeof Object.create === 'function') {
   }
 }
 
-},{}],8:[function(require,module,exports){
+},{}],11:[function(require,module,exports){
 // shim for using process in browser
 
 var process = module.exports = {};
@@ -667,14 +695,14 @@ process.chdir = function (dir) {
 };
 process.umask = function() { return 0; };
 
-},{}],9:[function(require,module,exports){
+},{}],12:[function(require,module,exports){
 module.exports = function isBuffer(arg) {
   return arg && typeof arg === 'object'
     && typeof arg.copy === 'function'
     && typeof arg.fill === 'function'
     && typeof arg.readUInt8 === 'function';
 }
-},{}],10:[function(require,module,exports){
+},{}],13:[function(require,module,exports){
 (function (process,global){
 // Copyright Joyent, Inc. and other Node contributors.
 //
@@ -1264,7 +1292,7 @@ function hasOwnProperty(obj, prop) {
 }
 
 }).call(this,require('_process'),typeof global !== "undefined" ? global : typeof self !== "undefined" ? self : typeof window !== "undefined" ? window : {})
-},{"./support/isBuffer":9,"_process":8,"inherits":7}],11:[function(require,module,exports){
+},{"./support/isBuffer":12,"_process":11,"inherits":10}],14:[function(require,module,exports){
 /**
 * @license compare-numbers https://github.com/cosmosio/compare-numbers
  *
@@ -1311,7 +1339,7 @@ module.exports = {
     }
 };
 
-},{}],12:[function(require,module,exports){
+},{}],15:[function(require,module,exports){
 /**
 * @license get-closest https://github.com/cosmosio/get-closest
 *
@@ -1412,7 +1440,7 @@ module.exports = {
 
 };
 
-},{"assert":6}],13:[function(require,module,exports){
+},{"assert":9}],16:[function(require,module,exports){
 /**
  * @license get-global https://github.com/cosmosio/get-global
  *
@@ -1432,13 +1460,13 @@ module.exports = function getGlobal() {
     return Function('return this')();
 };
 
-},{}],14:[function(require,module,exports){
+},{}],17:[function(require,module,exports){
 /**
 * @license highway https://github.com/cosmosio/highway
 *
 * The MIT License (MIT)
 *
-* Copyright (c) 2014 Olivier Scherrer <pode.fr@gmail.com>
+* Copyright (c) 2014-2015 Olivier Scherrer <pode.fr@gmail.com>
 */
 "use strict";
 
@@ -1670,7 +1698,7 @@ module.exports = function RouterConstructor() {
 
 };
 
-},{"to-array":28,"watch-notify":30}],15:[function(require,module,exports){
+},{"to-array":31,"watch-notify":33}],18:[function(require,module,exports){
 /**
 * @license nested-property https://github.com/cosmosio/nested-property
 *
@@ -1819,7 +1847,7 @@ function isInNestedProperty(object, property, objectInPath, options) {
     }
 }
 
-},{"assert":6}],16:[function(require,module,exports){
+},{"assert":9}],19:[function(require,module,exports){
 /**
 * @license object-count https://github.com/cosmosio/object-count
 *
@@ -1848,7 +1876,7 @@ module.exports = function count(object) {
   }
 };
 
-},{"assert":6}],17:[function(require,module,exports){
+},{"assert":9}],20:[function(require,module,exports){
 /**
 * @license observable-store https://github.com/flams/observable-store
 *
@@ -1910,8 +1938,8 @@ module.exports = function StoreConstructor($data) {
          "deleted",
          "added"].forEach(function (value) {
              diffs[value].forEach(function (dataIndex) {
-                    _storeObservable.notify(value, dataIndex, _data[dataIndex]);
-                    _valueObservable.notify(dataIndex, _data[dataIndex], value);
+                    _storeObservable.notify(value, dataIndex, _data[dataIndex], previousData[dataIndex]);
+                    _valueObservable.notify(dataIndex, _data[dataIndex], value, previousData[dataIndex]);
              });
         });
     };
@@ -2230,150 +2258,7 @@ module.exports = function StoreConstructor($data) {
     };
 };
 
-},{"compare-numbers":11,"nested-property":18,"object-count":16,"shallow-copy":20,"shallow-diff":21,"simple-loop":19,"watch-notify":30}],18:[function(require,module,exports){
-/**
-* @license nested-property https://github.com/cosmosio/nested-property
-*
-* The MIT License (MIT)
-*
-* Copyright (c) 2014 Olivier Scherrer <pode.fr@gmail.com>
-*/
-"use strict";
-
-var assert = require("assert");
-
-module.exports = {
-  set: setNestedProperty,
-  get: getNestedProperty
-}
-
-/**
- * Get the property of an object nested in one or more objects
- * given an object such as a.b.c.d = 5, getNestedProperty(a, "b.c.d") will return 5.
- * @param {Object} object the object to get the property from
- * @param {String} property the path to the property as a string
- * @returns the object or the the property value if found
- */
-function getNestedProperty(object, property) {
-    if (object && object instanceof Object) {
-        if (typeof property == "string" && property !== "") {
-            var split = property.split(".");
-            return split.reduce(function (obj, prop) {
-                return obj && obj[prop];
-            }, object);
-        } else if (typeof property == "number") {
-            return object[property];
-        } else {
-            return object;
-        }
-    } else {
-        return object;
-    }
-}
-
-/**
- * Set the property of an object nested in one or more objects
- * If the property doesn't exist, it gets created.
- * @param {Object} object
- * @param {String} property
- * @param value the value to set
- * @returns object if no assignment was made or the value if the assignment was made
- */
-function setNestedProperty(object, property, value) {
-    if (object && object instanceof Object) {
-        if (typeof property == "string" && property !== "") {
-            var split = property.split(".");
-            return split.reduce(function (obj, prop, idx) {
-                obj[prop] = obj[prop] || {};
-                if (split.length == (idx + 1)) {
-                    obj[prop] = value;
-                }
-                return obj[prop];
-            }, object);
-        } else if (typeof property == "number") {
-            object[property] = value;
-            return object[property];
-        } else {
-            return object;
-        }
-    } else {
-        return object;
-    }
-}
-
-},{"assert":6}],19:[function(require,module,exports){
-/**
-* @license simple-loop https://github.com/flams/simple-loop
-*
-* The MIT License (MIT)
-*
-* Copyright (c) 2014 Olivier Scherrer <pode.fr@gmail.com>
-*/
-"use strict";
-
-var assert = require("assert");
-
-/**
- * Small abstraction for looping over objects and arrays
- * Warning: it's not meant to be used with nodeList
- * To use with nodeList, convert to array first
- * @param {Array/Object} iterated the array or object to loop through
- * @param {Function} callback the function to execute for each iteration
- * @param {Object} scope the scope in which to execute the callback
- */
-module.exports = function loop(iterated, callback, scope) {
-  assert(typeof iterated == "object", "simple-loop: iterated must be an array/object");
-  assert(typeof callback == "function", "simple-loop: callback must be a function");
-
-  if (Array.isArray(iterated)) {
-      iterated.forEach(callback, scope);
-  } else {
-      for (var i in iterated) {
-          if (iterated.hasOwnProperty(i)) {
-              callback.call(scope, iterated[i], i, iterated);
-          }
-      }
-  }
-};
-
-},{"assert":6}],20:[function(require,module,exports){
-module.exports = function (obj) {
-    if (!obj || typeof obj !== 'object') return obj;
-    
-    var copy;
-    
-    if (isArray(obj)) {
-        var len = obj.length;
-        copy = Array(len);
-        for (var i = 0; i < len; i++) {
-            copy[i] = obj[i];
-        }
-    }
-    else {
-        var keys = objectKeys(obj);
-        copy = {};
-        
-        for (var i = 0, l = keys.length; i < l; i++) {
-            var key = keys[i];
-            copy[key] = obj[key];
-        }
-    }
-    return copy;
-};
-
-var objectKeys = Object.keys || function (obj) {
-    var keys = [];
-    for (var key in obj) {
-        if ({}.hasOwnProperty.call(obj, key)) keys.push(key);
-    }
-    return keys;
-};
-
-var isArray = Array.isArray || function (xs) {
-    return {}.toString.call(xs) === '[object Array]';
-};
-
-},{}],21:[function(require,module,exports){
+},{"compare-numbers":14,"nested-property":18,"object-count":19,"shallow-copy":24,"shallow-diff":21,"simple-loop":23,"watch-notify":33}],21:[function(require,module,exports){
 /**
 * @license shallow-diff https://github.com/cosmosio/shallow-diff
 *
@@ -2461,9 +2346,42 @@ module.exports = function shallowDiff(base, compared) {
   };
 };
 
-},{"assert":6,"simple-loop":22}],22:[function(require,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"assert":6,"dup":19}],23:[function(require,module,exports){
+},{"assert":9,"simple-loop":22}],22:[function(require,module,exports){
+/**
+* @license simple-loop https://github.com/flams/simple-loop
+*
+* The MIT License (MIT)
+*
+* Copyright (c) 2014 Olivier Scherrer <pode.fr@gmail.com>
+*/
+"use strict";
+
+var assert = require("assert");
+
+/**
+ * Small abstraction for looping over objects and arrays
+ * Warning: it's not meant to be used with nodeList
+ * To use with nodeList, convert to array first
+ * @param {Array/Object} iterated the array or object to loop through
+ * @param {Function} callback the function to execute for each iteration
+ * @param {Object} scope the scope in which to execute the callback
+ */
+module.exports = function loop(iterated, callback, scope) {
+  assert(typeof iterated == "object", "simple-loop: iterated must be an array/object");
+  assert(typeof callback == "function", "simple-loop: callback must be a function");
+
+  if (Array.isArray(iterated)) {
+      iterated.forEach(callback, scope);
+  } else {
+      for (var i in iterated) {
+          if (iterated.hasOwnProperty(i)) {
+              callback.call(scope, iterated[i], i, iterated);
+          }
+      }
+  }
+};
+
+},{"assert":9}],23:[function(require,module,exports){
 /**
 * @license simple-loop https://github.com/flams/simple-loop
 *
@@ -2500,7 +2418,177 @@ module.exports = function loop(iterated, callback, scope) {
   }
 };
 
-},{"assert":6}],24:[function(require,module,exports){
+},{"assert":9}],24:[function(require,module,exports){
+module.exports = function (obj) {
+    if (!obj || typeof obj !== 'object') return obj;
+    
+    var copy;
+    
+    if (isArray(obj)) {
+        var len = obj.length;
+        copy = Array(len);
+        for (var i = 0; i < len; i++) {
+            copy[i] = obj[i];
+        }
+    }
+    else {
+        var keys = objectKeys(obj);
+        copy = {};
+        
+        for (var i = 0, l = keys.length; i < l; i++) {
+            var key = keys[i];
+            copy[key] = obj[key];
+        }
+    }
+    return copy;
+};
+
+var objectKeys = Object.keys || function (obj) {
+    var keys = [];
+    for (var key in obj) {
+        if ({}.hasOwnProperty.call(obj, key)) keys.push(key);
+    }
+    return keys;
+};
+
+var isArray = Array.isArray || function (xs) {
+    return {}.toString.call(xs) === '[object Array]';
+};
+
+},{}],25:[function(require,module,exports){
+/**
+ * @license shallow-diff https://github.com/cosmosio/shallow-diff
+ *
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2014-2015 Olivier Scherrer <pode.fr@gmail.com>
+ */
+"use strict";
+
+function assert(assertion, error) {
+    if (assertion) {
+        throw new TypeError("simple-loop: " + error);
+    }
+}
+
+var loop = require("simple-loop");
+
+/**
+ * Make a diff between two objects
+ * @param {Array/Object} base the base object
+ * @param {Array/Object} compared the object to compare the base with
+ * @example:
+ *  With objects:
+ *
+ *  base = {a:1, b:2, c:3, d:4, f:6}
+ *  compared = {a:1, b:20, d: 4, e: 5}
+ *  will return :
+ *  {
+ *      unchanged: ["a", "d"],
+ *      updated: ["b"],
+ *      deleted: ["f"],
+ *      added: ["e"]
+ *  }
+ *
+ * It also works with Arrays:
+ *
+ *  base = [10, 20, 30]
+ *  compared = [15, 20]
+ *  will return :
+ *  {
+ *      unchanged: [1],
+ *      updated: [0],
+ *      deleted: [2],
+ *      added: []
+ *  }
+ *
+ * @returns object
+ */
+module.exports = function shallowDiff(base, compared) {
+    assert(typeof base != "object", "the first object to compare with shallowDiff needs to be an object");
+    assert(typeof compared != "object", "the second object to compare with shallowDiff needs to be an object");
+
+    var unchanged = [],
+        updated = [],
+        deleted = [],
+        added = [];
+
+    // Loop through the compared object
+    loop(compared, function(value, idx) {
+        // To get the added items
+        if (!(idx in base)) {
+            added.push(idx);
+
+        // The updated items
+        } else if (value !== base[idx]) {
+            updated.push(idx);
+
+        // And the unchanged
+        } else if (value === base[idx]) {
+            unchanged.push(idx);
+        }
+    });
+
+    // Loop through the before object
+    loop(base, function(value, idx) {
+        // To get the deleted items
+        if (!(idx in compared)) {
+            deleted.push(idx);
+        }
+    });
+
+    return {
+        updated: updated,
+        unchanged: unchanged,
+        added: added,
+        deleted: deleted
+    };
+};
+
+},{"simple-loop":26}],26:[function(require,module,exports){
+/**
+ * @license simple-loop https://github.com/flams/simple-loop
+ *
+ * The MIT License (MIT)
+ *
+ * Copyright (c) 2014-2015 Olivier Scherrer <pode.fr@gmail.com>
+ */
+"use strict";
+
+function assert(assertion, error) {
+    if (assertion) {
+        throw new TypeError("simple-loop: " + error);
+    }
+}
+
+/**
+ * Small abstraction for looping over objects and arrays
+ * Warning: it's not meant to be used with nodeList
+ * To use with nodeList, convert to array first
+ * @param {Array/Object} iterated the array or object to loop through
+ * @param {Function} callback the function to execute for each iteration
+ * @param {Object} scope the scope in which to execute the callback
+ */
+module.exports = function loop(iterated, callback, scope) {
+    assert(typeof iterated != "object", "iterated must be an array/object");
+    assert(typeof callback != "function", "callback must be a function");
+
+    var i;
+
+    if (Array.isArray(iterated)) {
+        for (i = 0; i < iterated.length; i++) {
+            callback.call(scope, iterated[i], i, iterated);
+        }
+    } else {
+        for (i in iterated) {
+            if (iterated.hasOwnProperty(i)) {
+                callback.call(scope, iterated[i], i, iterated);
+            }
+        }
+    }
+};
+
+},{}],27:[function(require,module,exports){
 /**
 * @license simple-mixin https://github.com/flams/simple-object-mixin
 *
@@ -2528,9 +2616,9 @@ module.exports = function mixin(source, destination, dontOverride) {
     return destination;
 };
 
-},{"simple-loop":25}],25:[function(require,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"assert":6,"dup":19}],26:[function(require,module,exports){
+},{"simple-loop":28}],28:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],29:[function(require,module,exports){
 /**
 * @license synchronous-fsm https://github.com/flams/synchronous-fsm
 *
@@ -2784,9 +2872,9 @@ function Transition() {
     };
 }
 
-},{"simple-loop":27,"to-array":28}],27:[function(require,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"assert":6,"dup":19}],28:[function(require,module,exports){
+},{"simple-loop":30,"to-array":31}],30:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],31:[function(require,module,exports){
 module.exports = toArray
 
 function toArray(list, index) {
@@ -2801,7 +2889,7 @@ function toArray(list, index) {
     return array
 }
 
-},{}],29:[function(require,module,exports){
+},{}],32:[function(require,module,exports){
 /**
 * @license transport https://github.com/cosmosio/transport
 *
@@ -2908,13 +2996,13 @@ module.exports = function TransportConstructor($reqHandlers) {
 
 };
 
-},{}],30:[function(require,module,exports){
+},{}],33:[function(require,module,exports){
 /**
 * @license watch-notify https://github.com/flams/watch-notify
 *
 * The MIT License (MIT)
 *
-* Copyright (c) 2014 Olivier Scherrer <pode.fr@gmail.com>
+* Copyright (c) 2014-2015 Olivier Scherrer <pode.fr@gmail.com>
 */
 "use strict";
 
@@ -2953,8 +3041,7 @@ module.exports = function WatchNotifyConstructor() {
             observer = [callback, scope];
 
             observers.push(observer);
-            return [topic,observers.indexOf(observer)];
-
+            return [topic, observers.indexOf(observer)];
         } else {
             return false;
         }
@@ -3013,7 +3100,9 @@ module.exports = function WatchNotifyConstructor() {
                     if (value) {
                         value[0].apply(value[1] || null, args);
                     }
-                } catch (err) { }
+                } catch (err) {
+                    console.error("[Watch-notify] publishing on '" + topic + "'' threw an error: " + err);
+                }
             });
             return true;
         } else {
@@ -3054,12 +3143,12 @@ module.exports = function WatchNotifyConstructor() {
     };
 };
 
-},{"assert":6,"simple-loop":31,"to-array":28}],31:[function(require,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"assert":6,"dup":19}],32:[function(require,module,exports){
+},{"assert":9,"simple-loop":34,"to-array":31}],34:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],35:[function(require,module,exports){
 /**
  * Emily.js - http://flams.github.com/emily/
- * Copyright(c) 2012-2014 Olivier Scherrer <pode.fr@gmail.com>
+ * Copyright(c) 2012-2015 Olivier Scherrer <pode.fr@gmail.com>
  * MIT Licensed
  */
  var compareNumbers = require("compare-numbers"),
@@ -3090,10 +3179,10 @@ module.exports = {
     Transport: require("transport")
 };
 
-},{"./Promise":33,"compare-numbers":11,"get-closest":12,"get-global":13,"highway":14,"nested-property":15,"object-count":16,"observable-store":17,"shallow-copy":20,"shallow-diff":21,"simple-loop":23,"simple-object-mixin":24,"synchronous-fsm":26,"to-array":28,"transport":29,"watch-notify":30}],33:[function(require,module,exports){
+},{"./Promise":36,"compare-numbers":14,"get-closest":15,"get-global":16,"highway":17,"nested-property":18,"object-count":19,"observable-store":20,"shallow-copy":24,"shallow-diff":25,"simple-loop":26,"simple-object-mixin":27,"synchronous-fsm":29,"to-array":31,"transport":32,"watch-notify":33}],36:[function(require,module,exports){
 /**
 * Emily.js - http://flams.github.com/emily/
-* Copyright(c) 2012-2014 Olivier Scherrer <pode.fr@gmail.com>
+* Copyright(c) 2012-2015 Olivier Scherrer <pode.fr@gmail.com>
 * MIT Licensed
 */
 "use strict";
@@ -3345,13 +3434,13 @@ module.exports = function PromiseConstructor() {
     };
 };
 
-},{"synchronous-fsm":26,"watch-notify":30}],34:[function(require,module,exports){
+},{"synchronous-fsm":29,"watch-notify":33}],37:[function(require,module,exports){
 /**
 * @license data-binding-plugin https://github.com/flams/data-binding-plugin
 *
 * The MIT License (MIT)
 *
-* Copyright (c) 2014 Olivier Scherrer <pode.fr@gmail.com>
+* Copyright (c) 2014-2015 Olivier Scherrer <pode.fr@gmail.com>
 */
 "use strict";
 
@@ -4012,11 +4101,11 @@ module.exports = function BindPluginConstructor($model, $bindings) {
     }
 };
 
-},{"compare-numbers":35,"get-closest":36,"get-dataset":37,"get-nodes":38,"nested-property":39,"simple-loop":40,"to-array":41,"watch-notify":42}],35:[function(require,module,exports){
-arguments[4][11][0].apply(exports,arguments)
-},{"dup":11}],36:[function(require,module,exports){
-arguments[4][12][0].apply(exports,arguments)
-},{"assert":6,"dup":12}],37:[function(require,module,exports){
+},{"compare-numbers":38,"get-closest":39,"get-dataset":40,"get-nodes":41,"nested-property":42,"simple-loop":43,"to-array":44,"watch-notify":45}],38:[function(require,module,exports){
+arguments[4][14][0].apply(exports,arguments)
+},{"dup":14}],39:[function(require,module,exports){
+arguments[4][15][0].apply(exports,arguments)
+},{"assert":9,"dup":15}],40:[function(require,module,exports){
 /**
 * @license get-dataset https://github.com/cosmios/get-dataset
 *
@@ -4049,7 +4138,7 @@ arguments[4][12][0].apply(exports,arguments)
     }
 };
 
-},{}],38:[function(require,module,exports){
+},{}],41:[function(require,module,exports){
 /**
 * @license get-nodes https://github.com/cosmios/get-nodes
 *
@@ -4070,84 +4159,17 @@ module.exports = function getNodes(dom) {
     return arrayDomElements;
 };
 
-},{"to-array":41}],39:[function(require,module,exports){
-/**
-* @license nested-property https://github.com/cosmosio/nested-property
-*
-* The MIT License (MIT)
-*
-* Copyright (c) 2014 Olivier Scherrer <pode.fr@gmail.com>
-*/
-"use strict";
-
-var assert = require("assert");
-
-module.exports = {
-  set: setNestedProperty,
-  get: getNestedProperty
-}
-
-/**
- * Get the property of an object nested in one or more objects
- * given an object such as a.b.c.d = 5, getNestedProperty(a, "b.c.d") will return 5.
- * @param {Object} object the object to get the property from
- * @param {String} property the path to the property as a string
- * @returns the object or the the property value if found
- */
-function getNestedProperty(object, property) {
-    if (object && typeof object == "object") {
-        if (typeof property == "string" && property !== "") {
-            var split = property.split(".");
-            return split.reduce(function (obj, prop) {
-                return obj && obj[prop];
-            }, object);
-        } else if (typeof property == "number") {
-            return object[property];
-        } else {
-            return object;
-        }
-    } else {
-        return object;
-    }
-}
-
-/**
- * Set the property of an object nested in one or more objects
- * If the property doesn't exist, it gets created.
- * @param {Object} object
- * @param {String} property
- * @param value the value to set
- * @returns object if no assignment was made or the value if the assignment was made
- */
-function setNestedProperty(object, property, value) {
-    if (object && typeof object == "object") {
-        if (typeof property == "string" && property !== "") {
-            var split = property.split(".");
-            return split.reduce(function (obj, prop, idx) {
-                obj[prop] = obj[prop] || {};
-                if (split.length == (idx + 1)) {
-                    obj[prop] = value;
-                }
-                return obj[prop];
-            }, object);
-        } else if (typeof property == "number") {
-            object[property] = value;
-            return object[property];
-        } else {
-            return object;
-        }
-    } else {
-        return object;
-    }
-}
-
-},{"assert":6}],40:[function(require,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"assert":6,"dup":19}],41:[function(require,module,exports){
-arguments[4][28][0].apply(exports,arguments)
-},{"dup":28}],42:[function(require,module,exports){
-arguments[4][30][0].apply(exports,arguments)
-},{"assert":6,"dup":30,"simple-loop":40,"to-array":41}],43:[function(require,module,exports){
+},{"to-array":44}],42:[function(require,module,exports){
+arguments[4][18][0].apply(exports,arguments)
+},{"assert":9,"dup":18}],43:[function(require,module,exports){
+arguments[4][26][0].apply(exports,arguments)
+},{"dup":26}],44:[function(require,module,exports){
+arguments[4][31][0].apply(exports,arguments)
+},{"dup":31}],45:[function(require,module,exports){
+arguments[4][33][0].apply(exports,arguments)
+},{"assert":9,"dup":33,"simple-loop":46,"to-array":44}],46:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],47:[function(require,module,exports){
 /**
 * @license dom-stack https://github.com/cosmosio/dom-stack
 *
@@ -4453,9 +4475,9 @@ module.exports = function StackConstructor($parent) {
 
 };
 
-},{"to-array":44}],44:[function(require,module,exports){
-arguments[4][28][0].apply(exports,arguments)
-},{"dup":28}],45:[function(require,module,exports){
+},{"to-array":48}],48:[function(require,module,exports){
+arguments[4][31][0].apply(exports,arguments)
+},{"dup":31}],49:[function(require,module,exports){
 /**
 * @license event-plugin https://github.com/flams/event-plugin
 *
@@ -4592,7 +4614,7 @@ module.exports = function EventPluginConstructor($parent, $isMobile) {
     this.setParent($parent);
 };
 
-},{"matches-selector":46}],46:[function(require,module,exports){
+},{"matches-selector":50}],50:[function(require,module,exports){
 'use strict';
 
 var proto = Element.prototype;
@@ -4622,13 +4644,13 @@ function match(el, selector) {
   }
   return false;
 }
-},{}],47:[function(require,module,exports){
+},{}],51:[function(require,module,exports){
 /**
 * @license local-observable-store https://github.com/cosmosio/local-observable-store
 *
 * The MIT License (MIT)
 *
-* Copyright (c) 2014 Olivier Scherrer <pode.fr@gmail.com>
+* Copyright (c) 2014-2015 Olivier Scherrer <pode.fr@gmail.com>
 */
 "use strict";
 
@@ -4724,25 +4746,31 @@ module.exports = function LocalStoreFactory(init) {
     return new LocalStoreConstructor();
 };
 
-},{"observable-store":48,"simple-loop":56}],48:[function(require,module,exports){
-arguments[4][17][0].apply(exports,arguments)
-},{"compare-numbers":49,"dup":17,"nested-property":50,"object-count":51,"shallow-copy":52,"shallow-diff":53,"simple-loop":56,"watch-notify":54}],49:[function(require,module,exports){
-arguments[4][11][0].apply(exports,arguments)
-},{"dup":11}],50:[function(require,module,exports){
-arguments[4][18][0].apply(exports,arguments)
-},{"assert":6,"dup":18}],51:[function(require,module,exports){
-arguments[4][16][0].apply(exports,arguments)
-},{"assert":6,"dup":16}],52:[function(require,module,exports){
+},{"observable-store":52,"simple-loop":63}],52:[function(require,module,exports){
 arguments[4][20][0].apply(exports,arguments)
-},{"dup":20}],53:[function(require,module,exports){
-arguments[4][21][0].apply(exports,arguments)
-},{"assert":6,"dup":21,"simple-loop":56}],54:[function(require,module,exports){
-arguments[4][30][0].apply(exports,arguments)
-},{"assert":6,"dup":30,"simple-loop":56,"to-array":55}],55:[function(require,module,exports){
-arguments[4][28][0].apply(exports,arguments)
-},{"dup":28}],56:[function(require,module,exports){
+},{"compare-numbers":53,"dup":20,"nested-property":54,"object-count":55,"shallow-copy":56,"shallow-diff":57,"simple-loop":59,"watch-notify":60}],53:[function(require,module,exports){
+arguments[4][14][0].apply(exports,arguments)
+},{"dup":14}],54:[function(require,module,exports){
+arguments[4][18][0].apply(exports,arguments)
+},{"assert":9,"dup":18}],55:[function(require,module,exports){
 arguments[4][19][0].apply(exports,arguments)
-},{"assert":6,"dup":19}],57:[function(require,module,exports){
+},{"assert":9,"dup":19}],56:[function(require,module,exports){
+arguments[4][24][0].apply(exports,arguments)
+},{"dup":24}],57:[function(require,module,exports){
+arguments[4][21][0].apply(exports,arguments)
+},{"assert":9,"dup":21,"simple-loop":58}],58:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],59:[function(require,module,exports){
+arguments[4][23][0].apply(exports,arguments)
+},{"assert":9,"dup":23}],60:[function(require,module,exports){
+arguments[4][33][0].apply(exports,arguments)
+},{"assert":9,"dup":33,"simple-loop":61,"to-array":62}],61:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],62:[function(require,module,exports){
+arguments[4][31][0].apply(exports,arguments)
+},{"dup":31}],63:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],64:[function(require,module,exports){
 /**
 * @license place-plugin https://github.com/flams/place-plugin
 *
@@ -4838,9 +4866,9 @@ module.exports = function PlacePluginConstructor($uis) {
 
 };
 
-},{"simple-loop":58}],58:[function(require,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"assert":6,"dup":19}],59:[function(require,module,exports){
+},{"simple-loop":65}],65:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],66:[function(require,module,exports){
 /**
 * @license seam-view https://github.com/flams/seam-view
 *
@@ -5036,13 +5064,13 @@ module.exports = function SeamViewConstructor() {
 
 };
 
-},{"seam":63,"synchronous-fsm":60,"to-array":62}],60:[function(require,module,exports){
-arguments[4][26][0].apply(exports,arguments)
-},{"dup":26,"simple-loop":61,"to-array":62}],61:[function(require,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"assert":6,"dup":19}],62:[function(require,module,exports){
-arguments[4][28][0].apply(exports,arguments)
-},{"dup":28}],63:[function(require,module,exports){
+},{"seam":70,"synchronous-fsm":67,"to-array":69}],67:[function(require,module,exports){
+arguments[4][29][0].apply(exports,arguments)
+},{"dup":29,"simple-loop":68,"to-array":69}],68:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],69:[function(require,module,exports){
+arguments[4][31][0].apply(exports,arguments)
+},{"dup":31}],70:[function(require,module,exports){
 /**
 * @license seam https://github.com/flams/seam
 *
@@ -5192,15 +5220,15 @@ module.exports = function Seam($plugins) {
 
 };
 
-},{"get-dataset":64,"get-nodes":65,"simple-loop":66,"to-array":67}],64:[function(require,module,exports){
-arguments[4][37][0].apply(exports,arguments)
-},{"dup":37}],65:[function(require,module,exports){
-arguments[4][38][0].apply(exports,arguments)
-},{"dup":38,"to-array":67}],66:[function(require,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"assert":6,"dup":19}],67:[function(require,module,exports){
-arguments[4][28][0].apply(exports,arguments)
-},{"dup":28}],68:[function(require,module,exports){
+},{"get-dataset":71,"get-nodes":72,"simple-loop":73,"to-array":74}],71:[function(require,module,exports){
+arguments[4][40][0].apply(exports,arguments)
+},{"dup":40}],72:[function(require,module,exports){
+arguments[4][41][0].apply(exports,arguments)
+},{"dup":41,"to-array":74}],73:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],74:[function(require,module,exports){
+arguments[4][31][0].apply(exports,arguments)
+},{"dup":31}],75:[function(require,module,exports){
 /**
 * @license socketio-transport https://github.com/cosmosio/socketio-transport
 *
@@ -5360,7 +5388,7 @@ module.exports = function SocketIOTransportConstructor($socket) {
 	this.setSocket($socket);
 };
 
-},{}],69:[function(require,module,exports){
+},{}],76:[function(require,module,exports){
 /**
 * @license socketio-transport https://github.com/cosmosio/socketio-transport
 *
@@ -5375,7 +5403,7 @@ module.exports = {
     Server: require("./server/index")
 };
 
-},{"./client/index":68,"./server/index":70}],70:[function(require,module,exports){
+},{"./client/index":75,"./server/index":77}],77:[function(require,module,exports){
 /**
 * @license socketio-transport https://github.com/cosmosio/socketio-transport
 *
@@ -5433,16 +5461,34 @@ module.exports = function registerSocketIO(io, handlers) {
     }
 };
 
-},{}],71:[function(require,module,exports){
+},{}],78:[function(require,module,exports){
+/**
+ * Olives http://flams.github.com/olives
+ * The MIT License (MIT)
+ * Copyright (c) 2012-2015 Olivier Scherrer <pode.fr@gmail.com> - Olivier Wietrich <olivier.wietrich@gmail.com>
+ */
+ "use strict";
+
+module.exports = {
+    "Bind.plugin": require("data-binding-plugin"),
+    "LocalStore": require("local-observable-store"),
+    "LocationRouter": require("url-highway"),
+    "OObject": require("seam-view"),
+    "Event.plugin": require("event-plugin"),
+    "Place.plugin": require("place-plugin"),
+    "Plugins": require("seam"),
+    "SocketIOTransport": require("socketio-transport"),
+    "Stack": require("dom-stack")
+};
+
+},{"data-binding-plugin":37,"dom-stack":47,"event-plugin":49,"local-observable-store":51,"place-plugin":64,"seam":70,"seam-view":66,"socketio-transport":76,"url-highway":79}],79:[function(require,module,exports){
 /**
 * @license url-highway https://github.com/cosmosio/url-highway
 *
 * The MIT License (MIT)
 *
-* Copyright (c) 2014 Olivier Scherrer <pode.fr@gmail.com>
+* Copyright (c) 2014-2016 Olivier Scherrer <pode.fr@gmail.com>
 */
-"use strict";
-
 var Highway = require("highway"),
     toArray = require("to-array");
 
@@ -5452,6 +5498,7 @@ var Highway = require("highway"),
  * while navigating. It's a subtype of Highway
  */
 function UrlHighway() {
+    "use strict";
 
     /**
      * The handle on the watch
@@ -5469,7 +5516,7 @@ function UrlHighway() {
      * The last route that was navigated to
      * @private
      */
-    _lastRoute = window.location.hash;
+    _lastRoute;
 
     /**
      * Navigates to the current hash or to the default route if none is supplied in the url
@@ -5560,7 +5607,7 @@ function UrlHighway() {
     /**
      * Remove the events handler for cleaning.
      */
-    this.destroy = function destroy() {
+    this.stop = function stop() {
         this.unwatch(_watchHandle);
         window.removeEventListener("hashchange", this.boundOnHashChange, true);
     };
@@ -5608,10 +5655,13 @@ function UrlHighway() {
         _lastRoute = window.location.hash;
     };
 
+    /**
+     * Get the last, or current, route we've navigated to
+     * @returns {string}
+     */
     this.getLastRoute = function getLastRoute() {
         return _lastRoute;
     };
-
 }
 
 module.exports = function UrlHighwayFactory() {
@@ -5620,32 +5670,223 @@ module.exports = function UrlHighwayFactory() {
     return new UrlHighway();
 };
 
-},{"highway":72,"to-array":75}],72:[function(require,module,exports){
-arguments[4][14][0].apply(exports,arguments)
-},{"dup":14,"to-array":75,"watch-notify":73}],73:[function(require,module,exports){
-arguments[4][30][0].apply(exports,arguments)
-},{"assert":6,"dup":30,"simple-loop":74,"to-array":75}],74:[function(require,module,exports){
-arguments[4][19][0].apply(exports,arguments)
-},{"assert":6,"dup":19}],75:[function(require,module,exports){
-arguments[4][28][0].apply(exports,arguments)
-},{"dup":28}],76:[function(require,module,exports){
+},{"highway":80,"to-array":83}],80:[function(require,module,exports){
 /**
- * Olives http://flams.github.com/olives
+ * @license highway https://github.com/cosmosio/highway
+ *
  * The MIT License (MIT)
- * Copyright (c) 2012-2014 Olivier Scherrer <pode.fr@gmail.com> - Olivier Wietrich <olivier.wietrich@gmail.com>
+ *
+ * Copyright (c) 2014-2016 Olivier Scherrer <pode.fr@gmail.com>
  */
- "use strict";
+"use strict";
 
-module.exports = {
-    "Bind.plugin": require("data-binding-plugin"),
-    "LocalStore": require("local-observable-store"),
-    "LocationRouter": require("url-highway"),
-    "OObject": require("seam-view"),
-    "Event.plugin": require("event-plugin"),
-    "Place.plugin": require("place-plugin"),
-    "Plugins": require("seam"),
-    "SocketIOTransport": require("socketio-transport"),
-    "Stack": require("dom-stack")
+var Observable = require("watch-notify"),
+    toArray = require("to-array");
+
+/**
+ * @class
+ * Routing allows for navigating in an application by defining routes.
+ */
+module.exports = function HighwayConstructor() {
+
+    /**
+     * The routes observable (the applications use it)
+     * @private
+     */
+    var _routes = new Observable(),
+
+        /**
+         * The events observable (used by Routing)
+         * @private
+         */
+        _events = new Observable(),
+
+        /**
+         * The routing history
+         * @private
+         */
+        _history = [],
+
+        /**
+         * For navigating through the history, remembers the current position
+         * @private
+         */
+        _currentPos = -1,
+
+        /**
+         * The max history depth
+         * @private
+         */
+        _maxHistory = 10;
+
+    /**
+     * Set a new route
+     * @param {String} route the name of the route
+     * @param {Function} func the function to be execute when navigating to the route
+     * @param {Object} scope the scope in which to execute the function
+     * @returns a handle to remove the route
+     */
+    this.set = function set() {
+        return _routes.watch.apply(_routes, arguments);
+    };
+
+    /**
+     * Remove a route
+     * @param {Object} handle the handle provided by the set method
+     * @returns true if successfully removed
+     */
+    this.unset = function unset(handle) {
+        return _routes.unwatch(handle);
+    };
+
+    /**
+     * Navigate to a route
+     * @param {String} route the route to navigate to
+     * @param {*} as many params as necessary
+     * @returns
+     */
+    this.navigate = function navigate(route) {
+        clearForwardHistory();
+        _history.push(toArray(arguments));
+        ensureMaxHistory();
+        _currentPos = _history.length - 1;
+        load.apply(this, arguments);
+    };
+
+    /**
+     * Go back and forth in the history
+     * @param {Number} nb the number of jumps in the history. Use negative number to go back.
+     * @returns true if history exists
+     */
+    this.go = function go(nb) {
+        var history = _history[_currentPos + nb];
+        if (history) {
+            _currentPos += nb;
+            load.apply(this, history);
+            return true;
+        } else {
+            return false;
+        }
+    };
+
+    /**
+     * Go back in the history, short for go(-1)
+     * @returns true if it was able to go back
+     */
+    this.back = function back() {
+        return this.go(-1);
+    };
+
+    /**
+     * Go forward in the history, short for go(1)
+     * @returns true if it was able to go forward
+     */
+    this.forward = function forward() {
+        return this.go(1);
+    };
+
+    /**
+     * Watch for route changes
+     * @param {Function} func the func to execute when the route changes
+     * @param {Object} scope the scope in which to execute the function
+     * @returns {Object} the handle to unwatch for route changes
+     */
+    this.watch = function watch(func, scope) {
+        return _events.watch("route", func, scope);
+    };
+
+    /**
+     * Unwatch routes changes
+     * @param {Object} handle the handle was returned by the watch function
+     * @returns true if unwatch
+     */
+    this.unwatch = function unwatch(handle) {
+        return _events.unwatch(handle);
+    };
+
+    /**
+     * Set the maximum length of history
+     * As the user navigates through the application, the
+     * router keeps track of the history. Set the depth of the history
+     * depending on your need and the amount of memory that you can allocate it
+     * @param {Number} maxHistory the depth of history
+     * @returns {Boolean} true if maxHistory is equal or greater than 0
+     */
+    this.setMaxHistory = function setMaxHistory(maxHistory) {
+        if (maxHistory >= 0) {
+            _maxHistory = maxHistory;
+            ensureMaxHistory();
+            return true;
+        } else {
+            return false;
+        }
+    };
+
+    /**
+     * Get the current max history setting
+     * @returns {Number} the depth of history
+     */
+    this.getMaxHistory = getMaxHistory;
+
+    /**
+     * Get the current length of history
+     * @returns {Number} the length of history
+     */
+    this.getHistoryCount = function getHistoryCount() {
+        return _history.length;
+    };
+
+    /**
+     * Flush the entire history
+     */
+    this.clearHistory = function clearHistory() {
+        _history.length = 0;
+    };
+
+    /**
+     * Get a route from the history or the entire historic
+     * @param index
+     * @returns {*}
+     */
+    this.getHistory = function getHistory(index) {
+        if (typeof index == "undefined") {
+            return _history;
+        } else {
+            return _history[_history.length - index - 1];
+        }
+    };
+
+    function load() {
+        var copy = toArray(arguments);
+
+        _routes.notify.apply(_routes, copy);
+        copy.unshift("route");
+        _events.notify.apply(_events, copy);
+    }
+
+    function getMaxHistory() {
+        return _maxHistory;
+    }
+
+    function ensureMaxHistory() {
+        var count = _history.length,
+            max = getMaxHistory(),
+            excess = count - max;
+
+        if (excess > 0) {
+            _history.splice(0, excess);
+        }
+    }
+
+    function clearForwardHistory() {
+        _history.splice(_currentPos + 1, _history.length);
+    }
 };
 
-},{"data-binding-plugin":34,"dom-stack":43,"event-plugin":45,"local-observable-store":47,"place-plugin":57,"seam":63,"seam-view":59,"socketio-transport":69,"url-highway":71}]},{},[1]);
+},{"to-array":83,"watch-notify":81}],81:[function(require,module,exports){
+arguments[4][33][0].apply(exports,arguments)
+},{"assert":9,"dup":33,"simple-loop":82,"to-array":83}],82:[function(require,module,exports){
+arguments[4][22][0].apply(exports,arguments)
+},{"assert":9,"dup":22}],83:[function(require,module,exports){
+arguments[4][31][0].apply(exports,arguments)
+},{"dup":31}]},{},[1]);

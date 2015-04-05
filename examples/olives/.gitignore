@@ -9,11 +9,15 @@ node_modules/requirejs/**
 !node_modules/requirejs/require.js
 
 node_modules/emily/**
-!node_modules/emily/build/Emily.js
 
 node_modules/olives/**
-!node_modules/olives/build/Olives.js
-!node_modules/olives/build/src/OObject.js
-!node_modules/olives/build/src/Event.plugin.js
-!node_modules/olives/build/src/Bind.plugin.js
-!node_modules/olives/build/src/LocalStore.js
+
+node_modules/filter-observable-store/**
+!node_modules/filter-observable-store/index.js
+
+node_modules/url-highway/**
+!node_modules/url-highway/index.js
+
+node_modules/.bin
+node_modules/browserify
+node_modules/watchify
